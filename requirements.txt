@@ -1,0 +1,12 @@
+ultralytics
+opencv-python
+insightface
+onnxruntime
+numpy
+pandas
+tqdm
+deep-sort-realtime
+pymongo
+streamlit
+matplotlib
+scikit-learn

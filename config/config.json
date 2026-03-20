@@ -1,0 +1,18 @@
+{
+  "input_type": "video",
+  "video_path": "input/sample.mp4",
+  "rtsp_url": "rtsp://username:password@ip:port/stream",
+
+  "frame_skip": 5,
+  "similarity_threshold": 0.6,
+
+  "tracker": "bytetrack",
+  "log_images": true,
+  "use_gpu": true,
+
+  "entry_exit_timeout": 30,
+  "save_embeddings": true,
+
+  "enable_dashboard": true,
+  "enable_heatmap": true
+}
