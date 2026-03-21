@@ -1,7 +1,6 @@
 import sys
 import os
 
-# ✅ FIX IMPORT PATH
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import streamlit as st
@@ -24,7 +23,7 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DB_PATH = os.path.join(BASE_DIR, "data", "events.db")
 HEATMAP_PATH = os.path.join(BASE_DIR, "outputs", "heatmaps", "heatmap.png")
 LOG_FILE = os.path.join(BASE_DIR, "logs", "events.log")
-LOGS_DIR = os.path.join(BASE_DIR, "logs")
+OUTPUT_VIDEO = os.path.join(BASE_DIR, "outputs", "live.mp4")
 INPUT_DIR = os.path.join(BASE_DIR, "input")
 
 # ===============================
@@ -34,19 +33,21 @@ st.set_page_config(layout="wide")
 st.title("🚀 Intelligent Face Tracker Dashboard")
 
 # ===============================
-# STATE
+# SESSION STATE
 # ===============================
-if "running" not in st.session_state:
-    st.session_state.running = False
+defaults = {
+    "running": False,
+    "mode": "Video",
+    "video_index": 0,
+    "initialized": False,
+    "rtsp_url": "",
+    "stream": None,
+    "video_writer": None
+}
 
-if "mode" not in st.session_state:
-    st.session_state.mode = "Video"
-
-if "video_index" not in st.session_state:
-    st.session_state.video_index = 0
-
-if "initialized" not in st.session_state:
-    st.session_state.initialized = False
+for key, val in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
 
 # ===============================
 # CONTROLS
@@ -59,8 +60,28 @@ if col1.button("▶️ Start"):
 if col2.button("⏹ Stop"):
     st.session_state.running = False
 
+    if st.session_state.stream:
+        st.session_state.stream.release()
+        st.session_state.stream = None
+
+    if st.session_state.video_writer:
+        st.session_state.video_writer.release()
+        st.session_state.video_writer = None
+
 mode = col3.selectbox("Mode", ["Video", "RTSP"])
 st.session_state.mode = mode
+
+# ===============================
+# RTSP INPUT
+# ===============================
+if mode == "RTSP":
+    st.session_state.rtsp_url = st.text_input(
+        "🔗 Enter RTSP URL",
+        value=st.session_state.rtsp_url
+    )
+
+    if st.session_state.rtsp_url:
+        st.success("✅ RTSP URL Ready")
 
 # ===============================
 # CONFIG
@@ -86,23 +107,15 @@ def get_total():
     conn.close()
     return val
 
-def get_df():
-    if not os.path.exists(DB_PATH):
-        return pd.DataFrame()
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM events", conn)
-    conn.close()
-    return df
-
 # ===============================
-# INIT SYSTEM
+# INIT
 # ===============================
 if st.session_state.running and not st.session_state.initialized:
 
     st.session_state.detector = FaceDetector(config)
     st.session_state.pipeline = Pipeline(config)
 
-    if st.session_state.mode == "Video":
+    if mode == "Video":
         videos = sorted([f for f in os.listdir(INPUT_DIR) if f.endswith(".mp4")])
         st.session_state.videos = videos
         st.session_state.video_index = 0
@@ -110,7 +123,7 @@ if st.session_state.running and not st.session_state.initialized:
     st.session_state.initialized = True
 
 # ===============================
-# LIVE FEED (NO FLICKER)
+# LIVE FEED
 # ===============================
 st.markdown("## 🎥 Live Feed")
 
@@ -123,19 +136,32 @@ if st.session_state.running:
     pipeline = st.session_state.pipeline
 
     # ================= RTSP MODE =================
-    if st.session_state.mode == "RTSP":
+    if mode == "RTSP":
 
-        rtsp_url = st.text_input("Enter RTSP URL", config.get("rtsp_url", ""))
+        rtsp_url = st.session_state.rtsp_url
 
         if not rtsp_url:
-            st.warning("Enter RTSP URL")
+            st.warning("⚠️ Enter RTSP URL")
             st.stop()
 
-        stream = VideoStream({
-            **config,
-            "input_type": "rtsp",
-            "rtsp_url": rtsp_url
-        })
+        # 🔥 CONNECT WITH LOADER
+        if st.session_state.stream is None:
+            with st.spinner("🔄 Connecting to RTSP..."):
+                st.session_state.stream = VideoStream({
+                    **config,
+                    "input_type": "rtsp",
+                    "rtsp_url": rtsp_url
+                })
+            st.success("✅ Connected!")
+
+        stream = st.session_state.stream
+
+        # 🎥 VIDEO SAVING INIT
+        if st.session_state.video_writer is None:
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            st.session_state.video_writer = cv2.VideoWriter(
+                OUTPUT_VIDEO, fourcc, 20.0, (480, 270)
+            )
 
         prev_time = time.time()
 
@@ -143,11 +169,14 @@ if st.session_state.running:
 
             frame = stream.read_frame()
 
+            # 🔁 AUTO RECONNECT
             if frame is None:
-                st.warning("⚠️ RTSP disconnected")
-                break
+                st.warning("🔁 Reconnecting...")
+                time.sleep(2)
+                continue
 
-            frame = cv2.resize(frame, (640, 360))
+            # ⚡ PERFORMANCE BOOST
+            frame = cv2.resize(frame, (480, 270))
 
             detections = detector.detect(frame)
             frame = pipeline.process(frame, detections)
@@ -159,11 +188,14 @@ if st.session_state.running:
 
             unique = get_unique()
 
-            cv2.putText(frame, f"FPS: {fps}", (20,40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+            cv2.putText(frame, f"FPS: {fps}", (10,30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
-            cv2.putText(frame, f"Unique: {unique}", (20,70),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+            cv2.putText(frame, f"Unique: {unique}", (10,55),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+
+            # 🎥 SAVE VIDEO
+            st.session_state.video_writer.write(frame)
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -174,7 +206,6 @@ if st.session_state.running:
 
     # ================= VIDEO MODE =================
     else:
-
         videos = st.session_state.videos
 
         while st.session_state.running:
@@ -208,23 +239,22 @@ if st.session_state.running:
                     st.session_state.video_index += 1
                     break
 
-                frame = cv2.resize(frame, (640, 360))
+                frame = cv2.resize(frame, (480, 270))
 
                 detections = detector.detect(frame)
                 frame = pipeline.process(frame, detections)
 
-                # FPS
                 now = time.time()
                 fps = int(1 / (now - prev_time + 1e-6))
                 prev_time = now
 
                 unique = get_unique()
 
-                cv2.putText(frame, f"FPS: {fps}", (20,40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+                cv2.putText(frame, f"FPS: {fps}", (10,30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
-                cv2.putText(frame, f"Unique: {unique}", (20,70),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+                cv2.putText(frame, f"Unique: {unique}", (10,55),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -239,7 +269,6 @@ if st.session_state.running:
 st.markdown("## 📊 Overview")
 
 col1, col2 = st.columns(2)
-
 col1.metric("👥 Unique Visitors", get_unique())
 col2.metric("📌 Total Events", get_total())
 
@@ -258,88 +287,19 @@ c2.metric("RAM", f"{psutil.virtual_memory().percent}%")
 st.markdown("## 🔥 Heatmap")
 
 if os.path.exists(HEATMAP_PATH):
-    st.image(HEATMAP_PATH, width="stretch")
+    st.image(HEATMAP_PATH, use_container_width=True)
 else:
     st.warning("Heatmap will appear after processing")
 
 # ===============================
-# LOGS 
+# LOGS
 # ===============================
-st.markdown("## 📜 Logs (Full History)")
+st.markdown("## 📜 Logs")
 
 if os.path.exists(LOG_FILE):
-
     with open(LOG_FILE, "r") as f:
-        logs = f.readlines()
+        logs = f.readlines()[::-1]
 
-    if logs:
-        # 🔥 Latest first
-        logs = logs[::-1]
-
-        # 🔥 Scrollable container (VERY IMPORTANT)
-        log_text = "".join(logs)
-
-        st.text_area(
-            "All Events",
-            log_text,
-            height=300
-        )
-    else:
-        st.info("No logs found")
-
+    st.text_area("Events", "".join(logs), height=300)
 else:
-    st.warning("Log file not found")
-
-# ===============================
-# IMAGES (SHOW ALL LOG IMAGES)
-# ===============================
-st.markdown("## 📸 All Captured Faces")
-
-def get_all_images(base_folder):
-    all_images = []
-
-    if not os.path.exists(base_folder):
-        return []
-
-    # 🔥 Walk through ALL subfolders (IMPORTANT)
-    for root, dirs, files in os.walk(base_folder):
-        for f in files:
-            if f.endswith(".jpg"):
-                full_path = os.path.join(root, f)
-                all_images.append(full_path)
-
-    # 🔥 Sort latest first
-    all_images = sorted(all_images, key=os.path.getmtime, reverse=True)
-
-    return all_images
-
-
-# 🔥 GET ALL IMAGES
-entry_images = get_all_images(os.path.join(LOGS_DIR, "entries"))
-exit_images = get_all_images(os.path.join(LOGS_DIR, "exits"))
-
-
-# ===============================
-# DISPLAY ENTRIES
-# ===============================
-st.subheader("🟢 Entry Images")
-
-if entry_images:
-    cols = st.columns(6)
-    for i, img in enumerate(entry_images[:60]):
-        cols[i % 6].image(img, width="stretch")
-else:
-    st.info("No entry images found")
-
-
-# ===============================
-# DISPLAY EXITS
-# ===============================
-st.subheader("🔴 Exit Images")
-
-if exit_images:
-    cols = st.columns(6)
-    for i, img in enumerate(exit_images[:60]):
-        cols[i % 6].image(img, width="stretch")
-else:
-    st.info("No exit images found")
+    st.warning("No logs found")
