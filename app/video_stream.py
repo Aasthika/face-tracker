@@ -16,20 +16,20 @@ class VideoStream:
     def connect(self):
         """Initialize video source"""
 
-        # 🔹 RTSP STREAM (MAIN INTERVIEW MODE)
+        # ================= RTSP =================
         if self.input_type == "rtsp":
             print(f"📡 Connecting to RTSP: {self.rtsp_url}")
 
-            # 🔥 IMPORTANT FIX (Mac + RTSP)
             self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
             if not self.cap.isOpened():
                 raise RuntimeError("❌ RTSP failed to open")
 
-        # 🔹 VIDEO FILE (backup only)
+        # ================= VIDEO =================
         else:
             print(f"📂 Opening: {self.video_path}")
+
             self.cap = cv2.VideoCapture(self.video_path)
 
             if not self.cap.isOpened():
@@ -44,14 +44,23 @@ class VideoStream:
         ret, frame = self.cap.read()
 
         if not ret:
-            print("⚠️ Stream lost → reconnecting...")
-            self.reconnect()
-            return None
+            # 🔥 FIX: ONLY reconnect for RTSP
+            if self.input_type == "rtsp":
+                print("⚠️ RTSP lost → reconnecting...")
+                self.reconnect()
+                return None
+            else:
+                # ✅ Video ended → NO reconnect
+                return None
 
         return frame
 
     def reconnect(self):
-        """Reconnect RTSP"""
+        """Reconnect RTSP ONLY"""
+
+        # ❌ Never reconnect for video files
+        if self.input_type != "rtsp":
+            return
 
         if self.cap:
             self.cap.release()

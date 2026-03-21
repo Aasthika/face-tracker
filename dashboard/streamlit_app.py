@@ -258,7 +258,7 @@ c2.metric("RAM", f"{psutil.virtual_memory().percent}%")
 st.markdown("## 🔥 Heatmap")
 
 if os.path.exists(HEATMAP_PATH):
-    st.image(HEATMAP_PATH, width="stretch")  # ✅ FIXED
+    st.image(HEATMAP_PATH, width="stretch")
 else:
     st.warning("Heatmap will appear after processing")
 
@@ -326,8 +326,8 @@ st.subheader("🟢 Entry Images")
 
 if entry_images:
     cols = st.columns(6)
-    for i, img in enumerate(entry_images[:60]):  # show up to 60
-        cols[i % 6].image(img, use_container_width=True)
+    for i, img in enumerate(entry_images[:60]):
+        cols[i % 6].image(img, width="stretch")
 else:
     st.info("No entry images found")
 
@@ -340,6 +340,6 @@ st.subheader("🔴 Exit Images")
 if exit_images:
     cols = st.columns(6)
     for i, img in enumerate(exit_images[:60]):
-        cols[i % 6].image(img, use_container_width=True)
+        cols[i % 6].image(img, width="stretch")
 else:
     st.info("No exit images found")
