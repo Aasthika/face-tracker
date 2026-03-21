@@ -287,7 +287,7 @@ c2.metric("RAM", f"{psutil.virtual_memory().percent}%")
 st.markdown("## 🔥 Heatmap")
 
 if os.path.exists(HEATMAP_PATH):
-    st.image(HEATMAP_PATH, use_container_width=True)
+    st.image(HEATMAP_PATH, width="stretch")
 else:
     st.warning("Heatmap will appear after processing")
 
