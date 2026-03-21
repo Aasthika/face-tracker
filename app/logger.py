@@ -48,10 +48,19 @@ class Logger:
         with open(self.log_file, "a") as f:
             f.write(log_line)
 
-        # 🔥 FORCE DB WRITE WITH DEBUG
+        # DB WRITE
         try:
             print("👉 Writing to DB...")
             self.db.insert_event(person_id, event_type, img_path)
             print("✅ DB WRITE SUCCESS")
+
+            # 🔥🔥 FIX: PRINT UNIQUE COUNT IN TERMINAL
+            if event_type == "ENTRY":
+                unique_count = self.db.get_unique_count()
+                print(f"👥 UNIQUE VISITORS: {unique_count}")
+
         except Exception as e:
             print("❌ DB ERROR:", e)
+
+    def get_unique_count(self):
+        return self.db.get_unique_count()

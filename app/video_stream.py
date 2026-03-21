@@ -14,59 +14,56 @@ class VideoStream:
         self.connect()
 
     def connect(self):
-        """Initialize video source with fallback"""
+        """Initialize video source"""
 
-        # 🔹 Try RTSP first
+        # 🔹 RTSP STREAM (MAIN INTERVIEW MODE)
         if self.input_type == "rtsp":
             print(f"📡 Connecting to RTSP: {self.rtsp_url}")
 
-            self.cap = cv2.VideoCapture(self.rtsp_url)
+            # 🔥 IMPORTANT FIX (Mac + RTSP)
+            self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
             if not self.cap.isOpened():
-                print("⚠️ RTSP failed → switching to video file")
-                self.input_type = "video"
-                self.cap = cv2.VideoCapture(self.video_path)
+                raise RuntimeError("❌ RTSP failed to open")
 
-        # 🔹 Video mode
+        # 🔹 VIDEO FILE (backup only)
         else:
             print(f"📂 Opening: {self.video_path}")
             self.cap = cv2.VideoCapture(self.video_path)
 
-        # ❌ Final check
-        if not self.cap or not self.cap.isOpened():
-            raise RuntimeError("❌ Failed to open video source")
+            if not self.cap.isOpened():
+                raise RuntimeError("❌ Video file failed")
 
     def read_frame(self):
         """Read next frame"""
 
+        if self.cap is None:
+            return None
+
         ret, frame = self.cap.read()
 
         if not ret:
-            # 🎬 Video finished
-            if self.input_type == "video":
-                print("✅ Video finished")
-                return None
-
-            # 📡 RTSP lost → reconnect
-            elif self.input_type == "rtsp":
-                print("⚠️ RTSP lost → reconnecting...")
-                self.reconnect()
-                return None
+            print("⚠️ Stream lost → reconnecting...")
+            self.reconnect()
+            return None
 
         return frame
 
     def reconnect(self):
-        """Reconnect RTSP stream"""
+        """Reconnect RTSP"""
 
         if self.cap:
             self.cap.release()
 
-        time.sleep(2)
+        time.sleep(1)
 
-        self.cap = cv2.VideoCapture(self.rtsp_url)
+        print("🔄 Reconnecting RTSP...")
+
+        self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
 
         if self.cap.isOpened():
-            print("✅ Reconnected successfully!")
+            print("✅ Reconnected!")
         else:
             print("❌ Reconnect failed")
 

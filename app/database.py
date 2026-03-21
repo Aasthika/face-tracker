@@ -13,6 +13,7 @@ class Database:
         self.create_tables()
 
     def create_tables(self):
+        # EVENTS TABLE
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,6 +23,15 @@ class Database:
             image_path TEXT
         )
         """)
+
+        # 🔥 NEW: UNIQUE VISITORS TABLE
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS unique_visitors (
+            person_id INTEGER PRIMARY KEY,
+            first_seen TEXT
+        )
+        """)
+
         self.conn.commit()
 
     def insert_event(self, person_id, event_type, image_path):
@@ -29,9 +39,22 @@ class Database:
 
         print("👉 INSERTING:", person_id, event_type)
 
+        # INSERT EVENT
         self.cursor.execute("""
         INSERT INTO events (person_id, event_type, timestamp, image_path)
         VALUES (?, ?, ?, ?)
         """, (person_id, event_type, timestamp, image_path))
 
+        # 🔥 UNIQUE VISITOR TRACKING
+        if event_type == "ENTRY":
+            self.cursor.execute("""
+            INSERT OR IGNORE INTO unique_visitors (person_id, first_seen)
+            VALUES (?, ?)
+            """, (person_id, timestamp))
+
         self.conn.commit()
+
+    # 🔥 GET UNIQUE COUNT
+    def get_unique_count(self):
+        self.cursor.execute("SELECT COUNT(*) FROM unique_visitors")
+        return self.cursor.fetchone()[0]

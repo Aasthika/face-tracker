@@ -10,6 +10,9 @@ class Pipeline:
         from app.event_manager import EventManager
         from app.logger import Logger
 
+        from app.heatmap import HeatmapGenerator
+        self.heatmap = HeatmapGenerator()
+
         self.recognizer = FaceRecognizer(config)
         self.tracker = Tracker()
         self.event_manager = EventManager(config)
@@ -28,6 +31,7 @@ class Pipeline:
         current_time = time.time()
 
         tracks = self.tracker.update(detections, frame)
+        self.heatmap.update(frame, tracks)
 
         for track in tracks:
             track_id = track["track_id"]
