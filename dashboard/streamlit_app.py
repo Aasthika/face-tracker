@@ -25,7 +25,7 @@ HEATMAP_PATH = os.path.join(BASE_DIR, "outputs", "heatmaps", "heatmap.png")
 LOG_FILE = os.path.join(BASE_DIR, "logs", "events.log")
 OUTPUT_VIDEO = os.path.join(BASE_DIR, "outputs", "live.mp4")
 INPUT_DIR = os.path.join(BASE_DIR, "input")
-
+LOGS_DIR = os.path.join(BASE_DIR, "logs")
 # ===============================
 # UI
 # ===============================
@@ -303,3 +303,55 @@ if os.path.exists(LOG_FILE):
     st.text_area("Events", "".join(logs), height=300)
 else:
     st.warning("No logs found")
+
+# ===============================
+# 📸 IMAGES (SHOW ALL LOG IMAGES)
+# ===============================
+st.markdown("## 📸 Captured Faces")
+
+def get_all_images(base_folder):
+    all_images = []
+
+    if not os.path.exists(base_folder):
+        return []
+
+    for root, dirs, files in os.walk(base_folder):
+        for f in files:
+            if f.endswith(".jpg"):
+                full_path = os.path.join(root, f)
+                all_images.append(full_path)
+
+    # latest first
+    all_images = sorted(all_images, key=os.path.getmtime, reverse=True)
+    return all_images
+
+
+# 🔥 GET IMAGES
+entry_images = get_all_images(os.path.join(LOGS_DIR, "entries"))
+exit_images = get_all_images(os.path.join(LOGS_DIR, "exits"))
+
+
+# ===============================
+# 🟢 ENTRY IMAGES
+# ===============================
+st.subheader("🟢 Entry Images")
+
+if entry_images:
+    cols = st.columns(5)
+    for i, img in enumerate(entry_images[:50]):
+        cols[i % 5].image(img, width="stretch")
+else:
+    st.info("No entry images found")
+
+
+# ===============================
+# 🔴 EXIT IMAGES
+# ===============================
+st.subheader("🔴 Exit Images")
+
+if exit_images:
+    cols = st.columns(5)
+    for i, img in enumerate(exit_images[:50]):
+        cols[i % 5].image(img, width="stretch")
+else:
+    st.info("No exit images found")
