@@ -185,7 +185,7 @@ first_seen	TEXT
 
 🎥 Demo Video
 
-👉 (Add your Loom or YouTube link here)
+https://www.youtube.com/watch?v=lY6GPqce58g
 
 ⸻
 
