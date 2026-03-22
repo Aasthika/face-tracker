@@ -7,7 +7,6 @@ import streamlit as st
 import cv2
 import sqlite3
 import time
-import pandas as pd
 import psutil
 
 from app.config_loader import ConfigLoader
@@ -26,6 +25,7 @@ LOG_FILE = os.path.join(BASE_DIR, "logs", "events.log")
 OUTPUT_VIDEO = os.path.join(BASE_DIR, "outputs", "live.mp4")
 INPUT_DIR = os.path.join(BASE_DIR, "input")
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
+
 # ===============================
 # UI
 # ===============================
@@ -42,7 +42,9 @@ defaults = {
     "initialized": False,
     "rtsp_url": "",
     "stream": None,
-    "video_writer": None
+    "video_writer": None,
+    "videos": [],
+    "prev_mode": "Video"
 }
 
 for key, val in defaults.items():
@@ -68,8 +70,18 @@ if col2.button("⏹ Stop"):
         st.session_state.video_writer.release()
         st.session_state.video_writer = None
 
+# ✅ MODE SELECT (MISSING FIX)
 mode = col3.selectbox("Mode", ["Video", "RTSP"])
 st.session_state.mode = mode
+
+# ===============================
+# 🔥 MODE SWITCH HANDLING
+# ===============================
+if st.session_state.prev_mode != mode:
+    st.session_state.initialized = False
+    st.session_state.videos = []
+    st.session_state.video_index = 0
+    st.session_state.prev_mode = mode
 
 # ===============================
 # RTSP INPUT
@@ -108,7 +120,7 @@ def get_total():
     return val
 
 # ===============================
-# INIT
+# INIT PIPELINE
 # ===============================
 if st.session_state.running and not st.session_state.initialized:
 
@@ -144,7 +156,6 @@ if st.session_state.running:
             st.warning("⚠️ Enter RTSP URL")
             st.stop()
 
-        # 🔥 CONNECT WITH LOADER
         if st.session_state.stream is None:
             with st.spinner("🔄 Connecting to RTSP..."):
                 st.session_state.stream = VideoStream({
@@ -156,7 +167,6 @@ if st.session_state.running:
 
         stream = st.session_state.stream
 
-        # 🎥 VIDEO SAVING INIT
         if st.session_state.video_writer is None:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             st.session_state.video_writer = cv2.VideoWriter(
@@ -169,19 +179,16 @@ if st.session_state.running:
 
             frame = stream.read_frame()
 
-            # 🔁 AUTO RECONNECT
             if frame is None:
                 st.warning("🔁 Reconnecting...")
                 time.sleep(2)
                 continue
 
-            # ⚡ PERFORMANCE BOOST
             frame = cv2.resize(frame, (480, 270))
 
             detections = detector.detect(frame)
             frame = pipeline.process(frame, detections)
 
-            # FPS
             now = time.time()
             fps = int(1 / (now - prev_time + 1e-6))
             prev_time = now
@@ -194,11 +201,9 @@ if st.session_state.running:
             cv2.putText(frame, f"Unique: {unique}", (10,55),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
-            # 🎥 SAVE VIDEO
             st.session_state.video_writer.write(frame)
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
             frame_placeholder.image(frame, channels="RGB")
             metric_placeholder.metric("👥 Live Visitors", unique)
 
@@ -206,7 +211,11 @@ if st.session_state.running:
 
     # ================= VIDEO MODE =================
     else:
-        videos = st.session_state.videos
+        videos = st.session_state.get("videos", [])
+
+        if not videos:
+            st.warning("⚠️ No videos found")
+            st.stop()
 
         while st.session_state.running:
 
@@ -299,43 +308,29 @@ st.markdown("## 📜 Logs")
 if os.path.exists(LOG_FILE):
     with open(LOG_FILE, "r") as f:
         logs = f.readlines()[::-1]
-
     st.text_area("Events", "".join(logs), height=300)
 else:
     st.warning("No logs found")
 
 # ===============================
-# 📸 IMAGES (SHOW ALL LOG IMAGES)
+# IMAGES
 # ===============================
 st.markdown("## 📸 Captured Faces")
 
 def get_all_images(base_folder):
     all_images = []
-
     if not os.path.exists(base_folder):
         return []
-
     for root, dirs, files in os.walk(base_folder):
         for f in files:
             if f.endswith(".jpg"):
-                full_path = os.path.join(root, f)
-                all_images.append(full_path)
+                all_images.append(os.path.join(root, f))
+    return sorted(all_images, key=os.path.getmtime, reverse=True)
 
-    # latest first
-    all_images = sorted(all_images, key=os.path.getmtime, reverse=True)
-    return all_images
-
-
-# 🔥 GET IMAGES
 entry_images = get_all_images(os.path.join(LOGS_DIR, "entries"))
 exit_images = get_all_images(os.path.join(LOGS_DIR, "exits"))
 
-
-# ===============================
-# 🟢 ENTRY IMAGES
-# ===============================
 st.subheader("🟢 Entry Images")
-
 if entry_images:
     cols = st.columns(5)
     for i, img in enumerate(entry_images[:50]):
@@ -343,12 +338,7 @@ if entry_images:
 else:
     st.info("No entry images found")
 
-
-# ===============================
-# 🔴 EXIT IMAGES
-# ===============================
 st.subheader("🔴 Exit Images")
-
 if exit_images:
     cols = st.columns(5)
     for i, img in enumerate(exit_images[:50]):
